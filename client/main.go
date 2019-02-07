@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	f, _ := ioutil.ReadFile("../client2.txt")
+	f, _ := ioutil.ReadFile("../input.txt")
 	conn, err := net.Dial("tcp", ":9000")
 	if err != nil {
 		log.Printf("Unable to establish connection.")

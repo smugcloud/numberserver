@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"bytes"
+	"io"
 	"log"
 	"net"
 	"sync"
@@ -72,20 +73,24 @@ func (m *numbers) countNumbers(conn net.Conn) {
 	defer conn.Close()
 
 	buf := make([]byte, 16*1024)
-	_, err := conn.Read(buf)
-	if err != nil {
-		log.Fatalf("Error reading from the connection: %v\n", err)
-	}
-	r := bytes.NewReader(buf)
-	scanner := bufio.NewScanner(r)
-
-	for scanner.Scan() {
-		if _, ok := m.m[scanner.Text()]; !ok {
-			m.m[scanner.Text()]++
+	for {
+		_, err := conn.Read(buf)
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			log.Fatalf("Error reading from the connection: %v\n", err)
 		}
-	}
-	if err := scanner.Err(); err != nil {
-		log.Printf("Error scanning %v.\n", err)
-	}
+		r := bytes.NewReader(buf)
+		scanner := bufio.NewScanner(r)
 
+		for scanner.Scan() {
+			if _, ok := m.m[scanner.Text()]; !ok {
+				m.m[scanner.Text()]++
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			log.Printf("Error scanning %v.\n", err)
+		}
+
+	}
 }
