@@ -2,8 +2,6 @@ package server
 
 import (
 	"bufio"
-	"bytes"
-	"io"
 	"log"
 	"net"
 	"sync"
@@ -18,15 +16,29 @@ type Conf struct {
 }
 
 type numbers struct {
-	m map[string]int
+	m          map[string]int
+	newUnique  uint32
+	uniqueTTL  uint32
+	lastSize   uint32
+	duplicates uint32
+	mut        sync.Mutex
 }
 
 func (m *numbers) printMap(t *time.Ticker) {
 	for {
 		select {
 		case <-t.C:
-			log.Printf("Current map length: %+v\n", len(m.m))
-			log.Printf("Current map: %+v\n", m.m)
+			if m.uniqueTTL != uint32(len(m.m)) {
+				m.mut.Lock()
+				m.newUnique = uint32(len(m.m)) - m.newUnique
+				m.uniqueTTL = uint32(len(m.m))
+				m.mut.Unlock()
+			}
+			log.Printf("Received %v unique numbers, %v duplicates.  Unique total: %v\n", m.newUnique, m.duplicates, m.uniqueTTL)
+
+			m.mut.Lock()
+			m.newUnique = 0
+			m.mut.Unlock()
 
 		}
 	}
@@ -48,7 +60,6 @@ func (c *Conf) Listen() {
 	for {
 		conn, err := l.Accept()
 		atomic.AddUint64(&counter, 1)
-		log.Printf("Counter: %v\n", counter)
 		if counter > c.maxConnections {
 			c.mut.Lock()
 
@@ -63,7 +74,7 @@ func (c *Conf) Listen() {
 		if err != nil {
 			log.Printf("Unable to accept connection.")
 		}
-		cn.countNumbers(conn)
+		go cn.countNumbers(conn)
 		atomic.AddUint64(&counter, ^uint64(counter-1))
 
 	}
@@ -72,25 +83,24 @@ func (c *Conf) Listen() {
 func (m *numbers) countNumbers(conn net.Conn) {
 	defer conn.Close()
 
-	buf := make([]byte, 16*1024)
-	for {
-		_, err := conn.Read(buf)
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			log.Fatalf("Error reading from the connection: %v\n", err)
-		}
-		r := bytes.NewReader(buf)
-		scanner := bufio.NewScanner(r)
+	loops := 0
 
-		for scanner.Scan() {
-			if _, ok := m.m[scanner.Text()]; !ok {
-				m.m[scanner.Text()]++
-			}
-		}
-		if err := scanner.Err(); err != nil {
-			log.Printf("Error scanning %v.\n", err)
-		}
+	scanner := bufio.NewScanner(conn)
 
+	for scanner.Scan() {
+		loops++
+
+		l := scanner.Text()
+
+		m.m[l]++
+	}
+	if err := scanner.Err(); err != nil {
+		log.Printf("Error scanning %v.\n", err)
+	}
+
+	for _, v := range m.m {
+		if v > 1 {
+			m.duplicates++
+		}
 	}
 }

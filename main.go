@@ -6,7 +6,7 @@ import (
 
 func main() {
 	s := server.Conf{
-		Address: ":9000",
+		Address: ":4000",
 	}
 	s.Listen()
 }
